@@ -1,0 +1,12 @@
+{
+  "department_name": "総務部",
+  "members": [
+    "田中 太郎",
+    "佐藤 花子",
+    "鈴木 一郎",
+    "高橋 美咲",
+    "伊藤 健太"
+  ],
+  "output_directory": "./morning_assembly_schedules",
+  "excel_filename": "総務部朝礼当番表.xlsx"
+}
