@@ -1,0 +1,28 @@
+# uv
+.venv/
+.uv/
+uv.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+
+# 出力されたExcelファイル
+morning_assembly_schedules/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# エディタ
+.vscode/
+.idea/
+*.swp
+*.swo
