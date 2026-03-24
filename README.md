@@ -16,24 +16,83 @@
 
 ```
 .
-├── generate_schedule.py      # メインスクリプト
+├── generate_schedule.py          # メインスクリプト
 ├── morning_assembly_config.json  # 設定ファイル（メンバー管理）
-├── run_monthly_batch.bat     # Windows用バッチ
-├── run_monthly_batch.sh      # Linux/Mac用シェル
-├── requirements.txt          # 必要ライブラリ
-├── README.md                 # このファイル
-├── README_for_staff.txt      # 事務員さん向け設定変更マニュアル
-└── morning_assembly_schedules/   # Excel出力先（自動生成）
+├── run_monthly_batch.bat         # Windows用バッチ
+├── run_monthly_batch.sh          # Linux/Mac用シェル
+├── pyproject.toml                # プロジェクト設定（uv管理）
+├── requirements.txt              # 必要ライブラリ（pip用）
+├── README.md                     # このファイル
+├── README_for_staff.txt          # 事務員さん向け設定変更マニュアル
+└── morning_assembly_schedules/   # Excel出力先（自動生成・gitignore済み）
     └── 総務部朝礼当番表.xlsx
 ```
 
 ## セットアップ
 
+### uv を使う場合（推奨）
+
+uv はpipより高速なPythonパッケージマネージャーです。
+
+#### 1. uv のインストール（まだの場合）
+
+```bash
+# Mac / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows（PowerShell）
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+#### 2. 仮想環境を作成する
+
+```bash
+# リポジトリのフォルダに移動してから実行
+uv venv
+```
+
+`.venv/` というフォルダが作られます（gitignore済みなのでコミットされません）。
+
+#### 3. 仮想環境を有効化する
+
+```bash
+# Mac / Linux
+source .venv/bin/activate
+
+# Windows（コマンドプロンプト）
+.venv\Scripts\activate.bat
+
+# Windows（PowerShell）
+.venv\Scripts\Activate.ps1
+```
+
+プロンプトの先頭に `(.venv)` と表示されれば有効化成功です。
+
+#### 4. ライブラリをインストールする
+
+```bash
+uv pip install -r requirements.txt
+```
+
+#### 5. 仮想環境を終了するとき
+
+```bash
+deactivate
+```
+
+---
+
+### pip を使う場合
+
 ```bash
 pip install -r requirements.txt
 ```
 
+---
+
 ## 使い方
+
+> 仮想環境を有効化した状態（`(.venv)` が表示されている状態）で実行してください。
 
 ### 翌月分を自動生成（月末バッチ用）
 
