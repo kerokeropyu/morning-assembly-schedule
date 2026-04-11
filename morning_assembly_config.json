@@ -1,12 +1,30 @@
 {
   "department_name": "総務部",
   "members": [
-    "田中 太郎",
-    "佐藤 花子",
-    "鈴木 一郎",
-    "高橋 美咲",
-    "伊藤 健太"
+    "メンバー1",
+    "メンバー2",
+    "メンバー3",
+    "メンバー4",
+    "メンバー5",
+    "メンバー6",
+    "メンバー7",
+    "メンバー8"
   ],
-  "output_directory": "./morning_assembly_schedules",
-  "excel_filename": "総務部朝礼当番表.xlsx"
+
+  "output_directory": "./output",
+  "excel_filename": "掃除担当表.xlsx",
+
+  "_comment_template": "テンプレートExcelのパスを指定。exe化する場合は実行ファイルと同じフォルダに配置して ./template.xlsx のように相対パスで指定",
+  "template_file": "./template.xlsx",
+
+  "_comment_sheet": "テンプレート内の雛形シート名。このシートをコピーして月別シートを作成する。省略時は空シートを新規作成",
+  "template_sheet_name": "通常清掃 (山下さん追加)",
+
+  "_comment_layout": "テンプレートのレイアウトに合わせて各行・列番号を調整してください（1始まり）",
+  "week_row": 2,
+  "header_row": 3,
+  "data_row": 4,
+  "name_col": 5,
+  "col_step": 2,
+  "num_locations": 14
 }
