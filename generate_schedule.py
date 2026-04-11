@@ -13,32 +13,16 @@
 設定ファイル（morning_assembly_config.json）に以下を追加することで
 テンプレートExcelをもとに出力できます。
 
-  "template_file": テンプレートExcelのパス（例: "./template.xlsx"）
-                  exe化する場合は実行ファイルと同フォルダに配置して
-                  "./template.xlsx" のように相対パスで指定してください。
-
-【テンプレートのレイアウト想定（添付ファイルの掃除担当表をもとに）】
-  行1      : タイトル行（「掃除担当表」等） ← 上書きしない
-  行2      : 週の開始日見出し行             ← 月初週から連続した日付で上書き
-  行3      : 列ヘッダー行（フロア/番号/掃除場所/担当者）← テンプレートのまま残す
-  行4以降  : 清掃場所ごとの担当者行         ← 担当者名だけを書き込む
-
-  列構成（設定ファイルの start_col を起点）:
-    start_col+0 : フロア（テンプレートの固定値をそのまま使用）
-    start_col+1 : 番号
-    start_col+2 : 掃除場所
-    start_col+3 : サポート情報（任意）
-    start_col+4 : 担当者（1週目）
-    start_col+5 : 空白列（テンプレートの1列おきの構成に合わせる）
-    start_col+6 : 担当者（2週目）
-    ... 以降、1列おきに担当者列が続く
-
-  ※ start_row / start_col は設定ファイルで調整してください。
+  "template_file":        テンプレートExcelのパス（例: "./template.xlsx"）
+  "template_sheet_name": テンプレート内の雛形シート名（例: "テンプレート"）
+                         省略時は既存の空シート生成方式のまま動作します。
+  "start_row":           ヘッダー行を書き始める行番号（デフォルト: 1）
+  "start_col":           氏名列を書き始める列番号（デフォルト: 1）
 """
 
 import json
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 from calendar import monthrange
 
@@ -46,6 +30,7 @@ import jpholiday
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
+import openpyxl
 
 
 def load_config(config_path: str = "morning_assembly_config.json"):
@@ -68,10 +53,6 @@ def load_config(config_path: str = "morning_assembly_config.json"):
 # ・存在しない場合：
 #     template_path が指定されていればテンプレートファイルをコピーして雛形とする
 #     指定がなければ従来通り空の Workbook を新規作成する
-#
-# exe化する場合：
-#   template_file に "./template.xlsx" と書けば、
-#   実行ファイルと同じフォルダにある template.xlsx を読み込みます。
 # =============================================================================
 def load_or_create_workbook(output_dir: Path, filename: str, template_path: str = None):
     """Excelファイルを読み込む。なければテンプレートをコピー（またはWorkbook新規作成）。"""
@@ -83,6 +64,7 @@ def load_or_create_workbook(output_dir: Path, filename: str, template_path: str 
         # ---------------------------------------------------------------
         # テンプレートファイルをコピーして雛形として使う
         # ※ テンプレートのパスは設定ファイルの "template_file" キーで外部指定
+        # ※ exe化してもテンプレートを差し替えるだけで対応できる
         # ---------------------------------------------------------------
         template_file = Path(template_path)
         if not template_file.exists():
@@ -100,17 +82,7 @@ def is_off_day(year: int, month: int, day: int) -> bool:
     return d.weekday() >= 5 or jpholiday.is_holiday(d)
 
 
-def get_weekday_dates(year: int, month: int):
-    """指定年月の平日（土日祝を除く）のdate一覧を返す"""
-    _, num_days = monthrange(year, month)
-    return [
-        date(year, month, d)
-        for d in range(1, num_days + 1)
-        if not is_off_day(year, month, d)
-    ]
-
-
-def create_month_sheet(wb, year: int, month: int, members: list, config: dict):
+def create_month_sheet(wb, year: int, month: int, members, config: dict):
     """
     指定年月のシートを作成（既にあれば作り直し）。
 
@@ -138,7 +110,7 @@ def create_month_sheet(wb, year: int, month: int, members: list, config: dict):
         template_ws = wb[template_sheet_name]
         ws = wb.copy_worksheet(template_ws)
         ws.title = sheet_title
-        # テンプレートシートを非表示にする
+        # テンプレートシートを非表示にする（必要に応じてコメントアウト）
         template_ws.sheet_state = "hidden"
     else:
         ws = wb.create_sheet(title=sheet_title)
@@ -151,100 +123,94 @@ def create_month_sheet(wb, year: int, month: int, members: list, config: dict):
 
     # ------------------------------------------------------------------
     # 【修正箇所③】書き込み始点を設定ファイルから取得する
-    #
-    # テンプレートのレイアウトに合わせて以下を調整してください。
-    #
-    # header_row : 「担当者」列ヘッダーがある行番号（例: 3 → 3行目がヘッダー）
-    # data_row   : 担当者名を書き始める行番号（例: 4 → 4行目から清掃場所行が始まる）
-    # name_col   : 担当者列の先頭列番号
-    #              ※ 添付テンプレートでは1列おきに「担当者」列がある構成のため、
-    #                 name_col から 2列おきに担当者を書き込む
-    # week_row   : 週の日付（「8/7-」等）を書き込む行番号（例: 2 → 2行目）
+    # テンプレートにタイトル行等がある場合は start_row / start_col を調整する
+    # 例: "start_row": 3, "start_col": 2 → 3行目・B列から描画開始
     # ------------------------------------------------------------------
-    header_row = config.get("header_row", 3)   # ヘッダー行（「担当者」見出しの行）
-    data_row   = config.get("data_row",   4)   # データ開始行（清掃場所の1行目）
-    name_col   = config.get("name_col",   5)   # 担当者列の先頭列番号（A=1）
-    week_row   = config.get("week_row",   2)   # 週日付を書く行番号
-    col_step   = config.get("col_step",   2)   # 担当者列の間隔（テンプレートが1列おきなら2）
-    # ---------------------------------------------------------------
-    # 平日リストを取得し、週ごとにグループ化する
-    # ---------------------------------------------------------------
-    weekday_dates = get_weekday_dates(year, month)
+    START_ROW = config.get("start_row", 1)  # ヘッダー行の行番号（デフォルト: 1行目）
+    START_COL = config.get("start_col", 1)  # 氏名列の列番号（デフォルト: 1列目=A列）
 
-    # 週単位でグループ化（月曜始まりの週で区切る）
-    weeks = []
-    if weekday_dates:
-        current_week = [weekday_dates[0]]
-        for d in weekday_dates[1:]:
-            if d.weekday() < current_week[-1].weekday():  # 週が変わった
-                weeks.append(current_week)
-                current_week = [d]
-            else:
-                current_week.append(d)
-        weeks.append(current_week)
-
-    # ---------------------------------------------------------------
     # スタイル定義
-    # ---------------------------------------------------------------
-    off_fill    = PatternFill(start_color="BFBFBF", end_color="BFBFBF", fill_type="solid")
-    border      = Border(
-        left=Side(style="thin"), right=Side(style="thin"),
-        top=Side(style="thin"),  bottom=Side(style="thin"),
+    header_fill  = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")  # 平日ヘッダー：ネイビー
+    sat_fill     = PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="solid")  # 土曜：水色
+    sun_hol_fill = PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid")  # 日曜・祝日：薄赤
+    off_fill     = PatternFill(start_color="BFBFBF", end_color="BFBFBF", fill_type="solid")  # 休日セル：グレー
+    name_fill    = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")  # 名前列
+    header_font  = Font(bold=True, color="FFFFFF", size=11)
+    border = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin"),
     )
     center_align = Alignment(horizontal="center", vertical="center")
 
     num_members = len(members)
-    num_locations = config.get("num_locations", num_members)  # 清掃場所数（デフォルトはメンバー数と同じ）
+    _, num_days = monthrange(year, month)
+    youbi = ["月", "火", "水", "木", "金", "土", "日"]
 
-    # ---------------------------------------------------------------
-    # 週の日付見出しを書き込む（行2: 「8/7-」等）
-    # ※ テンプレートの既存見出しを上書きする
-    # ---------------------------------------------------------------
-    for wi, week in enumerate(weeks):
-        col = name_col + wi * col_step
-        # 週の開始日（月曜）を取得
-        start_of_week = week[0]
-        week_label = f"{start_of_week.month}/{start_of_week.day}-"
-        cell = ws.cell(row=week_row, column=col, value=week_label)
+    # ヘッダー（左上セル）
+    c = ws.cell(row=START_ROW, column=START_COL, value="氏名 / 日付")
+    c.fill = header_fill
+    c.font = header_font
+    c.border = border
+    c.alignment = center_align
+
+    # 日付行：平日はネイビー、土曜は水色、日曜・祝日は薄赤
+    for day in range(1, num_days + 1):
+        d = date(year, month, day)
+        w = youbi[d.weekday()]
+        cell = ws.cell(row=START_ROW, column=START_COL + day, value=f"{day}日\n({w})")
+        cell.font = header_font
+        cell.border = border
         cell.alignment = center_align
+        if d.weekday() == 5:
+            cell.fill = sat_fill
+        elif d.weekday() == 6 or jpholiday.is_holiday(d):
+            cell.fill = sun_hol_fill
+        else:
+            cell.fill = header_fill
 
-    # ---------------------------------------------------------------
-    # 担当者を週ごとに書き込む
-    # duty_index : 今まで何回平日があったかのカウンター（ローテーション計算用）
-    # ---------------------------------------------------------------
+    # 名前列（START_ROW+1 行目から1人ずつ）
+    for idx, member in enumerate(members, start=1):
+        cell = ws.cell(row=START_ROW + idx, column=START_COL, value=member)
+        cell.fill = name_fill
+        cell.font = Font(bold=True, size=10)
+        cell.border = border
+        cell.alignment = Alignment(horizontal="left", vertical="center")
+
+    # 当番 ◯ 割り振り
+    # 土日祝日は「休」+グレー、平日は当番のメンバーだけ◯
     duty_index = 0
-    for wi, week in enumerate(weeks):
-        col = name_col + wi * col_step  # この週の担当者列
-
-        for d in week:
-            # 各平日の担当者（ローテーション）
-            assigned_member = members[duty_index % num_members]
+    for day in range(1, num_days + 1):
+        col = START_COL + day
+        if is_off_day(year, month, day):
+            # 休日：全メンバー行を「休」+グレー
+            for offset in range(1, num_members + 1):
+                cell = ws.cell(row=START_ROW + offset, column=col, value="休")
+                cell.fill = off_fill
+                cell.font = Font(size=10, color="FFFFFF")
+                cell.border = border
+                cell.alignment = center_align
+        else:
+            # 平日：当番のメンバーだけ◯、他は空白
+            duty_offset = (duty_index % num_members) + 1  # 1始まりのオフセット
+            for offset in range(1, num_members + 1):
+                cell = ws.cell(row=START_ROW + offset, column=col, value="")
+                cell.border = border
+                cell.alignment = center_align
+            duty_cell = ws.cell(row=START_ROW + duty_offset, column=col, value="◯")
+            duty_cell.font = Font(size=14, bold=True, color="FF0000")
+            duty_cell.border = border
+            duty_cell.alignment = center_align
             duty_index += 1
 
-            # 清掃場所ごとの行に担当者名を書き込む
-            # ※ テンプレートの1行 = 1清掃場所に対応
-            # ※ 全場所に同じ担当者を書く場合はこのままでOK
-            #   場所ごとにメンバーをずらしたい場合は以下のロジックを修正する
-            for loc_idx in range(num_locations):
-                row = data_row + loc_idx
-                cell = ws.cell(row=row, column=col)
-                # 平日は担当者名、休日はすでに空白のままにする
-                # （この週の中の平日は同じ担当者を書く。週1回の当番表のため）
-                # ※ 1週間に複数の平日があるが、週の担当者は最初の日の担当者で統一
-                # ※ 上書きを避けるため、最初の平日（d == week[0]）のみ書き込む
-                if d == week[0]:
-                    cell.value = assigned_member
-                    cell.alignment = center_align
-                    cell.border = border
-
-    # ---------------------------------------------------------------
-    # 休日（土日祝）の週があればグレーアウト
-    # ---------------------------------------------------------------
-    _, num_days = monthrange(year, month)
+    # 列幅・行高さ
+    ws.column_dimensions[get_column_letter(START_COL)].width = 15
     for day in range(1, num_days + 1):
-        if is_off_day(year, month, day):
-            # 休日列はテンプレートのまま（担当者列が関係する場合のみグレーアウト）
-            pass  # テンプレートがすでに休日を考慮している場合はここは不要
+        ws.column_dimensions[get_column_letter(START_COL + day)].width = 6
+    ws.row_dimensions[START_ROW].height = 30
+    for offset in range(1, num_members + 1):
+        ws.row_dimensions[START_ROW + offset].height = 20
 
 
 def generate_schedule_for(year: int, month: int, config: dict):
@@ -254,7 +220,7 @@ def generate_schedule_for(year: int, month: int, config: dict):
 
     # 【修正箇所①】template_path を config から取得して load_or_create_workbook() に渡す
     # 設定ファイルに "template_file": "./template.xlsx" を追加すれば外部指定できる
-    template_path = config.get("template_file")
+    template_path = config.get("template_file")  # 未設定の場合は None → 従来通り空シート生成
     wb, filepath = load_or_create_workbook(output_dir, excel_filename, template_path)
 
     create_month_sheet(wb, year, month, config["members"], config)
